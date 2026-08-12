@@ -20,7 +20,13 @@ def load_matches():
 
 
 def allowed_hosts():
-    return {host.strip().lower() for host in os.getenv("ALLOWED_STREAM_HOSTS", "").split(",") if host.strip()}
+    # The configured provider hostname works out of the box.  A deployment
+    # can additionally supply ALLOWED_STREAM_HOSTS for its own provider hosts.
+    configured = os.getenv("ALLOWED_STREAM_HOSTS", "")
+    return {
+        "popwellfox.s3.us-east-1.amazonaws.com",
+        *{host.strip().lower() for host in configured.split(",") if host.strip()},
+    }
 
 
 def is_allowed(url):
@@ -50,7 +56,7 @@ def resolve(match_id):
     stream_url = match.get("streamUrl", "")
     if is_hls(stream_url):
         if not is_allowed(stream_url):
-            return jsonify({"error": "Set ALLOWED_STREAM_HOSTS in Vercel project settings"}), 422
+            return jsonify({"error": "Stream host is not allowed"}), 422
         return jsonify({"type": "hls", "streamUrl": f"/api/proxy?url={quote(stream_url, safe='')}"})
     if match.get("youtubeId") or match.get("youtubeUrl"):
         return jsonify({"type": "youtube", "youtube": match.get("youtubeId") or match.get("youtubeUrl")})
