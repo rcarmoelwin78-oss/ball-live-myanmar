@@ -1,0 +1,15 @@
+[
+  {
+    "id": 1,
+    "authorized": true,
+    "isLive": true,
+    "league": "UEFA CHAMPIONS LEAGUE",
+    "home": "Paris Saint-Germain",
+    "away": "Aston Villa",
+    "homeLogo": "https://a.espncdn.com/i/teamlogos/soccer/500/19258.png",
+    "awayLogo": "https://cdn.freebiesupply.com/logos/large/2x/aston-villa-fc-01-logo-png-transparent.png",
+    "time": "LIVE NOW",
+    "youtubeId": "",
+    "streamUrl": "https://popwellfox.s3.us-east-1.amazonaws.com/rangers_720p30.m3u8"
+  }
+]

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Ball Live Myanmar</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root{--green:#31dc82;--ink:#eef4f0;--muted:#99a69f;--line:rgba(255,255,255,.09)}*{box-sizing:border-box}body{margin:0;background:#090d0b;color:var(--ink);font-family:"Segoe UI",Arial,sans-serif}body:before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(circle at 90% -10%,#1c6341,transparent 38%)}.app{position:relative;max-width:650px;margin:auto;min-height:100vh;padding:20px 16px 32px}header{display:flex;justify-content:space-between;align-items:center;margin-bottom:26px}.brand{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:900}.ball{display:grid;place-items:center;width:35px;height:35px;border-radius:11px;background:var(--green);color:#062315;font-size:19px}.live{padding:7px 10px;border-radius:16px;background:rgba(255,40,75,.12);color:#ff8da3;font-size:11px;font-weight:800}.live i{display:inline-block;width:7px;height:7px;margin-right:5px;border-radius:50%;background:#ff294d;box-shadow:0 0 7px #ff294d}.hero{padding:22px;border:1px solid var(--line);border-radius:20px;background:linear-gradient(130deg,#173c29,#111a15)}.hero small{color:var(--green);font-weight:900;letter-spacing:1px}.hero h1{margin:9px 0 8px;font-size:25px;line-height:1.25}.hero p{margin:0;color:#bac6bf;font-size:13px;line-height:1.6}.head{display:flex;justify-content:space-between;align-items:center;margin:28px 1px 12px}.head h2{margin:0;font-size:17px}.count{color:var(--muted);font-size:12px}.grid{display:grid;gap:11px}.match{display:flex;align-items:center;gap:14px;width:100%;padding:14px;border:1px solid var(--line);border-radius:18px;background:rgba(21,28,25,.93);color:inherit;text-align:left;font:inherit;cursor:pointer}.match:active{transform:scale(.99);border-color:var(--green)}.crests{display:flex;align-items:center;min-width:67px}.crest{display:grid;place-items:center;overflow:hidden;width:37px;height:37px;border:2px solid #17201b;border-radius:50%;background:#254d38;color:#e9f5ee;font-size:11px;font-weight:900}.crest+.crest{margin-left:-8px;background:#263b64}.crest img{width:100%;height:100%;object-fit:contain;background:#f7f7f7}.details{min-width:0;flex:1}.league,.teams,.time{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.league{color:var(--muted);font-size:10px;font-weight:800;letter-spacing:.55px;text-transform:uppercase}.teams{margin-top:5px;font-size:15px;font-weight:800}.time{margin-top:5px;color:#ff8298;font-size:11px;font-weight:800}.play{display:grid;place-items:center;flex:none;width:35px;height:35px;border-radius:50%;background:var(--green);color:#062315;font-size:13px}.empty{padding:42px 18px;border:1px dashed rgba(255,255,255,.19);border-radius:18px;color:var(--muted);text-align:center;font-size:14px;line-height:1.7}.empty b{display:block;color:#e1e9e4;font-size:16px}.refresh{display:block;margin:17px auto 0;border:0;background:none;color:var(--green);font:700 13px inherit;cursor:pointer}.foot{margin-top:24px;color:#6f7c75;text-align:center;font-size:11px}
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header><div class="brand"><span class="ball">⚽</span>BALL LIVE MYANMAR</div><span class="live"><i></i>LIVE</span></header>
+    <section class="hero"><small>PREMIUM CHANNEL</small><h1>Live football, one tap away.</h1><p>Live ဖြစ်နေသော ပွဲကို ရွေးပြီး Telegram အတွင်းကနေ တိုက်ရိုက်ကြည့်ရှုနိုင်ပါသည်။</p></section>
+    <section><div class="head"><h2>Live matches</h2><span class="count" id="count">Loading...</span></div><div class="grid" id="matches"></div><button class="refresh" id="refresh">↻ Refresh matches</button></section>
+    <p class="foot">BALL LIVE MYANMAR · Member access only</p>
+  </main>
+  <script>
+    var tg = window.Telegram && window.Telegram.WebApp;
+    if (tg) { tg.ready(); tg.expand(); }
+    var list = document.getElementById('matches');
+    var count = document.getElementById('count');
+    function asText(value) { return String(value || ''); }
+    function makeCrest(name, imageUrl) {
+      var crest = document.createElement('span'); crest.className = 'crest';
+      if (imageUrl) { var image = document.createElement('img'); image.src = imageUrl; image.alt = name + ' logo'; crest.appendChild(image); }
+      else { crest.textContent = asText(name).split(/\s+/).slice(0, 2).map(function (part) { return part[0]; }).join('').toUpperCase() || '⚽'; }
+      return crest;
+    }
+    function draw(matches) {
+      list.innerHTML = ''; count.textContent = matches.length + ' Live';
+      if (!matches.length) { list.innerHTML = '<div class="empty"><b>Live ပွဲမရှိသေးပါ</b>ပွဲစတင်သောအခါ ဒီနေရာမှာ ပေါ်လာပါမည်။</div>'; return; }
+      matches.forEach(function (match) {
+        var button = document.createElement('button'); button.className = 'match';
+        var crests = document.createElement('span'); crests.className = 'crests'; crests.appendChild(makeCrest(match.home, match.homeLogo)); if (match.away) crests.appendChild(makeCrest(match.away, match.awayLogo));
+        var details = document.createElement('span'); details.className = 'details';
+        var league = document.createElement('span'); league.className = 'league'; league.textContent = asText(match.league || 'FOOTBALL LIVE');
+        var teams = document.createElement('span'); teams.className = 'teams'; teams.textContent = match.away ? asText(match.home) + ' vs ' + asText(match.away) : asText(match.home);
+        var time = document.createElement('span'); time.className = 'time'; time.textContent = '● ' + asText(match.time || 'LIVE NOW');
+        details.appendChild(league); details.appendChild(teams); details.appendChild(time);
+        var play = document.createElement('span'); play.className = 'play'; play.textContent = '▶';
+        button.appendChild(crests); button.appendChild(details); button.appendChild(play);
+        button.onclick = function () { location.href = 'watch.html?id=' + Number(match.id); };
+        list.appendChild(button);
+      });
+    }
+    async function load() {
+      count.textContent = 'Loading...';
+      try { var response = await fetch('/api/matches'); if (!response.ok) throw new Error('Could not load matches'); draw(await response.json()); }
+      catch (error) {
+        try {
+          var fallback = await fetch('/matches.json');
+          if (!fallback.ok) throw new Error('No local matches');
+          draw((await fallback.json()).filter(function (match) { return match.authorized && match.isLive; }));
+        } catch (_) {
+          count.textContent = 'Unavailable';
+          list.innerHTML = '<div class="empty"><b>ပွဲစာရင်း မရသေးပါ</b>Refresh ပြန်လုပ်ပေးပါ။</div>';
+        }
+      }
+    }
+    document.getElementById('refresh').onclick = load; load(); setInterval(load, 30000);
+  </script>
+</body>
+</html>
