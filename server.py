@@ -290,6 +290,11 @@ def home():
     return send_from_directory(".", "index.html")
 
 
+@app.get("/admin")
+def admin_dashboard():
+    return send_from_directory(".", "admin.html")
+
+
 @app.get("/api/health")
 def health():
     return jsonify({"ok": True})

@@ -49,3 +49,5 @@ Content-Type: application/json
 ```
 
 Never expose `TELEGRAM_BOT_TOKEN` or `ADMIN_API_TOKEN` in HTML, GitHub, or a Telegram message.
+
+Open `/admin` on the backend domain to use the manual member activation dashboard.
