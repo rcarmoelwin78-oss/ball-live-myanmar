@@ -54,3 +54,5 @@ Open `/admin` on the backend domain to use the manual member activation dashboar
 Set `TELEGRAM_WEBHOOK_SECRET` to another generated secret, then use **Connect Telegram bot** once in the admin dashboard. Any user who sends a payment screenshot or message to the bot is automatically listed in **Load payment users**; select their row and activate their membership.
 
 Set `WEB_APP_URL` to the public Web App URL. After activation, the bot automatically sends that user a **Watch Live** Web App button.
+
+Set `CHANNEL_URL` to the public channel URL (for example, `https://t.me/ballgeneralmyanmar`). The bot shows a **Channel ကိုဝင်မည်** button in its `/start` reply; membership is never required for playback, so expired users remain subscribed for renewal promotions.

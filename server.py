@@ -439,6 +439,10 @@ def telegram_webhook():
                 (str(sender["id"]), name, datetime.now(UTC).isoformat()),
             )
     if sender.get("id") and chat.get("id") and text in {"/start", "/id", "id"}:
+        channel_url = os.getenv("CHANNEL_URL", "").strip()
+        keyboard = []
+        if channel_url.startswith("https://t.me/"):
+            keyboard.append([{"text": "📢 Channel ကိုဝင်မည်", "url": channel_url}])
         telegram_api("sendMessage", {
             "chat_id": chat["id"],
             "text": (
@@ -447,6 +451,7 @@ def telegram_webhook():
                 "KPay သို့ ငွေလွှဲပြီး payment screenshot ကို ဒီ bot ထဲပို့ပေးပါ။ "
                 "Admin က အတည်ပြုပြီးနောက် 🔴 Watch Live button ကို ပြန်ပို့ပေးပါမည်။"
             ),
+            "reply_markup": {"inline_keyboard": keyboard} if keyboard else None,
         })
     return jsonify({"ok": True})
 
