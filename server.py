@@ -421,13 +421,14 @@ def payment_requests():
 
 @app.post("/api/telegram/webhook")
 def telegram_webhook():
-    """Reply to /start or /id with the sender's ID for manual activation."""
+    """Show a short, button-led payment flow and record interested users."""
     secret = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
     if not secret or not hmac.compare_digest(request.headers.get("X-Telegram-Bot-Api-Secret-Token", ""), secret):
         return jsonify({"error": "Unauthorized"}), 401
     update = request.get_json(silent=True) or {}
-    message = update.get("message") or {}
-    sender = message.get("from") or {}
+    callback = update.get("callback_query") or {}
+    message = update.get("message") or callback.get("message") or {}
+    sender = message.get("from") or callback.get("from") or {}
     chat = message.get("chat") or {}
     text = (message.get("text") or "").strip().lower()
     if sender.get("id") and chat.get("id"):
@@ -438,20 +439,41 @@ def telegram_webhook():
                 "ON CONFLICT(telegram_user_id) DO UPDATE SET display_name=excluded.display_name, received_at=excluded.received_at",
                 (str(sender["id"]), name, datetime.now(UTC).isoformat()),
             )
-    if sender.get("id") and chat.get("id") and text in {"/start", "/id", "id"}:
-        channel_url = os.getenv("CHANNEL_URL", "").strip()
-        keyboard = []
-        if channel_url.startswith("https://t.me/"):
-            keyboard.append([{"text": "📢 Channel ကိုဝင်မည်", "url": channel_url}])
+    if not sender.get("id") or not chat.get("id"):
+        return jsonify({"ok": True})
+
+    channel_url = os.getenv("CHANNEL_URL", "").strip()
+    web_app_url = os.getenv("WEB_APP_URL", "").strip()
+    kpay_number = os.getenv("KPAY_NUMBER", "").strip()
+    kpay_account = os.getenv("KPAY_ACCOUNT_NAME", "").strip()
+    keyboard = [[{"text": "🔴 Live ဝယ်မည်", "callback_data": "buy_live"}]]
+    if web_app_url.startswith("https://"):
+        keyboard[0].append({"text": "📺 Live ကြည့်မည်", "web_app": {"url": web_app_url}})
+    if channel_url.startswith("https://t.me/"):
+        keyboard.append([{"text": "📢 Channel ဝင်မည်", "url": channel_url}])
+
+    if callback.get("id"):
+        telegram_api("answerCallbackQuery", {"callback_query_id": callback["id"]})
+    if callback.get("data") == "buy_live" or text in {"live ဝယ်မည်", "ဝယ်မည်", "buy"}:
+        payment_text = "\n".join(part for part in [
+            "💳 တစ်လ Live Pass — 5,000 Ks (30 days)",
+            f"KPay: {kpay_number}" if kpay_number else "KPay နံပါတ်ကို admin ထံမေးပါ။",
+            f"အမည်: {kpay_account}" if kpay_account else "",
+            "",
+            "1. အထက်က KPay သို့ငွေလွှဲပါ",
+            "2. Payment screenshot ကို ဒီ bot ထဲသို့ပို့ပါ",
+            "3. Admin အတည်ပြုပြီးလျှင် Watch Live ခလုတ်ကို bot က ပြန်ပို့ပေးပါမယ်။",
+        ]).strip()
         telegram_api("sendMessage", {
             "chat_id": chat["id"],
-            "text": (
-                "⚽ Ball Live Myanmar မှ ကြိုဆိုပါသည်။\n\n"
-                "📦 Monthly Live Pass — 5,000 Ks / 30 days\n\n"
-                "KPay သို့ ငွေလွှဲပြီး payment screenshot ကို ဒီ bot ထဲပို့ပေးပါ။ "
-                "Admin က အတည်ပြုပြီးနောက် 🔴 Watch Live button ကို ပြန်ပို့ပေးပါမည်။"
-            ),
-            "reply_markup": {"inline_keyboard": keyboard} if keyboard else None,
+            "text": payment_text,
+            "reply_markup": {"inline_keyboard": keyboard},
+        })
+    elif text in {"/start", "/menu", "menu", "မင်္ဂလာပါ"}:
+        telegram_api("sendMessage", {
+            "chat_id": chat["id"],
+            "text": "⚽ Ball General Live Myanmar မှ ကြိုဆိုပါတယ်။\n\nလိုချင်တာကို အောက်ကခလုတ်တစ်ခုနှိပ်ပါ။",
+            "reply_markup": {"inline_keyboard": keyboard},
         })
     return jsonify({"ok": True})
 
