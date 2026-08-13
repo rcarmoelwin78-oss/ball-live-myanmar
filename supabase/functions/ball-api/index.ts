@@ -3,7 +3,12 @@ import { createClient } from "@supabase/supabase-js";
 
 const secrets = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}");
 const db = createClient(Deno.env.get("SUPABASE_URL")!, secrets.default || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type, x-telegram-init-data", "content-type": "application/json; charset=utf-8" };
+const cors = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-headers": "authorization, content-type, x-telegram-init-data",
+  "access-control-allow-methods": "POST, OPTIONS",
+  "content-type": "application/json; charset=utf-8"
+};
 const secret = (key: string) => Deno.env.get(key)?.trim() || "";
 const reply = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: cors });
 
@@ -48,6 +53,25 @@ Deno.serve(async (req) => {
   if (action === "users") {
     const { data } = await db.from("payment_requests").select("telegram_user_id,display_name,received_at,customer_messages(message_type,body,file_id,received_at)").order("received_at", { ascending: false });
     return reply((data || []).map((row: any) => ({ ...row, latest_message: row.customer_messages?.at(-1)?.body || "", message_type: row.customer_messages?.at(-1)?.message_type || "", file_id: row.customer_messages?.at(-1)?.file_id || "" })));
+  }
+  if (action === "matches_admin") {
+    const { data, error } = await db.from("matches").select("id,is_live,league,home,away,home_logo,away_logo,time_label,stream_type,stream_url").order("id", { ascending: false });
+    return error ? reply({ error: error.message }, 500) : reply(data || []);
+  }
+  if (action === "publish_match") {
+    const required = [body.league, body.home, body.away, body.streamUrl];
+    if (required.some((value) => !String(value || "").trim())) return reply({ error: "League, teams and stream link are required" }, 400);
+    const record = {
+      is_live: true, authorized: true, league: String(body.league).trim(), home: String(body.home).trim(), away: String(body.away).trim(),
+      home_logo: String(body.homeLogo || ""), away_logo: String(body.awayLogo || ""), time_label: String(body.time || "LIVE NOW"),
+      stream_type: body.streamType === "youtube" ? "youtube" : "hls", stream_url: String(body.streamUrl).trim(), updated_at: new Date().toISOString()
+    };
+    const { data, error } = await db.from("matches").insert(record).select("id").single();
+    return error ? reply({ error: error.message }, 500) : reply({ ok: true, id: data.id });
+  }
+  if (action === "set_match_live") {
+    const { error } = await db.from("matches").update({ is_live: Boolean(body.isLive), updated_at: new Date().toISOString() }).eq("id", Number(body.id));
+    return error ? reply({ error: error.message }, 500) : reply({ ok: true });
   }
   if (action === "activate") {
     const days = Number(body.days); const id = String(body.telegramUserId || ""); if (!id || !Number.isFinite(days) || days < 1) return reply({ error: "Invalid member" }, 400);
