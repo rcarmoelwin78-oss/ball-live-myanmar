@@ -45,18 +45,19 @@
         list.appendChild(button);
       });
     }
+    function apiFetch(url, options) {
+      options = options || {};
+      options.headers = Object.assign({}, options.headers || {}, {
+        'X-Telegram-Init-Data': tg ? tg.initData : ''
+      });
+      return fetch(url, options);
+    }
     async function load() {
       count.textContent = 'Loading...';
-      try { var response = await fetch('/api/matches'); if (!response.ok) throw new Error('Could not load matches'); draw(await response.json()); }
+      try { var response = await apiFetch('/api/matches'); if (!response.ok) { var error = await response.json(); throw new Error(error.error || 'Could not load matches'); } draw(await response.json()); }
       catch (error) {
-        try {
-          var fallback = await fetch('/matches.json');
-          if (!fallback.ok) throw new Error('No local matches');
-          draw((await fallback.json()).filter(function (match) { return match.authorized && match.isLive; }));
-        } catch (_) {
-          count.textContent = 'Unavailable';
-          list.innerHTML = '<div class="empty"><b>ပွဲစာရင်း မရသေးပါ</b>Refresh ပြန်လုပ်ပေးပါ။</div>';
-        }
+        count.textContent = 'Locked';
+        list.innerHTML = '<div class="empty"><b>Subscription လိုအပ်ပါသည်</b>' + error.message + '</div>';
       }
     }
     document.getElementById('refresh').onclick = load; load(); setInterval(load, 30000);

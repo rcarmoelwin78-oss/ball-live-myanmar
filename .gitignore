@@ -1,5 +1,7 @@
 __pycache__/
 *.py[cod]
 .env
+members.db
+data/
 provider_config.json
 scraper.py

@@ -1,8 +1,13 @@
 import json
 import re
 import time
+import hmac
+import hashlib
+import os
+import sqlite3
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from urllib.parse import quote, urljoin, urlparse
+from urllib.parse import parse_qsl, quote, urljoin, urlparse
 
 import requests
 import truststore
@@ -17,6 +22,7 @@ truststore.inject_into_ssl()
 FIREBASE_URL = "https://bgm-live-db-default-rtdb.asia-southeast1.firebasedatabase.app/matches.json"
 MATCHES_FILE = Path(__file__).with_name("matches.json")
 PROVIDER_CONFIG_FILE = Path(__file__).with_name("provider_config.json")
+MEMBERS_DB = Path(os.getenv("MEMBERS_DB", Path(os.getenv("DATA_DIR", Path(__file__).parent)) / "members.db"))
 _provider_cache: list[dict] = []
 _provider_cache_at = 0.0
 USER_AGENT = (
@@ -27,6 +33,63 @@ USER_AGENT = (
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
+
+
+def database():
+    connection = sqlite3.connect(MEMBERS_DB)
+    connection.row_factory = sqlite3.Row
+    connection.execute("""
+        CREATE TABLE IF NOT EXISTS members (
+            telegram_user_id TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL DEFAULT '',
+            expires_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    return connection
+
+
+def verify_telegram_user():
+    """Validate Telegram Web App initData and return its user payload."""
+    init_data = request.headers.get("X-Telegram-Init-Data", "")
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if not init_data or not bot_token:
+        return None
+    values = dict(parse_qsl(init_data, keep_blank_values=True))
+    received_hash = values.pop("hash", "")
+    check_string = "\n".join(f"{key}={values[key]}" for key in sorted(values))
+    secret = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+    expected = hmac.new(secret, check_string.encode(), hashlib.sha256).hexdigest()
+    if not received_hash or not hmac.compare_digest(expected, received_hash):
+        return None
+    try:
+        return json.loads(values["user"])
+    except (KeyError, json.JSONDecodeError):
+        return None
+
+
+def current_member():
+    """Return active Telegram member. Localhost is allowed for UI development."""
+    if request.remote_addr in {"127.0.0.1", "::1"}:
+        return {"id": "local-demo", "first_name": "Local Demo"}
+    user = verify_telegram_user()
+    if not user:
+        return None
+    with database() as connection:
+        member = connection.execute(
+            "SELECT expires_at FROM members WHERE telegram_user_id = ?", (str(user["id"]),)
+        ).fetchone()
+    if not member:
+        return None
+    expires_at = datetime.fromisoformat(member["expires_at"])
+    return user if expires_at > datetime.now(UTC) else None
+
+
+def member_required():
+    member = current_member()
+    if member:
+        return member
+    return jsonify({"error": "Subscription expired or inactive"}), 403
 
 
 def site_base(url: str) -> str:
@@ -224,9 +287,57 @@ def health():
     return jsonify({"ok": True})
 
 
+@app.post("/api/session")
+def session():
+    """Return the current Telegram member's subscription state."""
+    user = verify_telegram_user()
+    if not user:
+        return jsonify({"active": False, "error": "Telegram verification failed"}), 401
+    with database() as connection:
+        member = connection.execute(
+            "SELECT expires_at FROM members WHERE telegram_user_id = ?", (str(user["id"]),)
+        ).fetchone()
+    if not member:
+        return jsonify({"active": False, "error": "No active subscription"}), 403
+    expires_at = datetime.fromisoformat(member["expires_at"])
+    return jsonify({"active": expires_at > datetime.now(UTC), "expiresAt": expires_at.isoformat()})
+
+
+@app.post("/api/admin/members/activate")
+def activate_member():
+    """Manual-payment admin action: activate a Telegram user for a number of days."""
+    if not os.getenv("ADMIN_API_TOKEN") or request.headers.get("Authorization") != f"Bearer {os.getenv('ADMIN_API_TOKEN')}":
+        return jsonify({"error": "Unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    user_id = str(body.get("telegramUserId", "")).strip()
+    days = int(body.get("days", 30))
+    if not user_id or days < 1 or days > 366:
+        return jsonify({"error": "telegramUserId and valid days are required"}), 400
+    now = datetime.now(UTC)
+    with database() as connection:
+        existing = connection.execute(
+            "SELECT expires_at FROM members WHERE telegram_user_id = ?", (user_id,)
+        ).fetchone()
+        base = now
+        if existing:
+            existing_expiry = datetime.fromisoformat(existing["expires_at"])
+            if existing_expiry > now:
+                base = existing_expiry
+        expiry = base + timedelta(days=days)
+        connection.execute(
+            "INSERT INTO members (telegram_user_id, display_name, expires_at, updated_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(telegram_user_id) DO UPDATE SET display_name=excluded.display_name, expires_at=excluded.expires_at, updated_at=excluded.updated_at",
+            (user_id, str(body.get("displayName", "")), expiry.isoformat(), now.isoformat()),
+        )
+    return jsonify({"telegramUserId": user_id, "expiresAt": expiry.isoformat()})
+
+
 @app.get("/api/matches")
 def matches():
     """Only publish events explicitly marked as authorized in the catalog."""
+    access = member_required()
+    if not isinstance(access, dict):
+        return access
     try:
         published = [
             match for match in fetch_matches()
@@ -239,6 +350,9 @@ def matches():
 
 @app.get("/api/resolve/<int:match_id>")
 def resolve_match(match_id: int):
+    access = member_required()
+    if not isinstance(access, dict):
+        return access
     matches = fetch_matches()
     match = next((m for m in matches if int(m.get("id", 0)) == match_id), None)
     if not match or match.get("authorized") is not True:
@@ -259,6 +373,9 @@ def resolve_match(match_id: int):
 
 @app.get("/proxy")
 def proxy():
+    access = member_required()
+    if not isinstance(access, dict):
+        return access
     target_url = request.args.get("url")
     referer = request.args.get("referer")
     if not target_url:

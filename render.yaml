@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: ball-live-myanmar-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT server:app
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: ADMIN_API_TOKEN
+        generateValue: true
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: ball-live-members
+      mountPath: /var/data
+      sizeGB: 1

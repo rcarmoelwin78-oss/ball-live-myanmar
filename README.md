@@ -31,8 +31,21 @@ Use a stream URL supplied by your authorized provider. For YouTube, use `youtube
 
 ## Deploy
 
-- Deploy the frontend and serverless API to Vercel from this GitHub repository.
-- In Vercel Project Settings → Environment Variables, set `ALLOWED_STREAM_HOSTS` to the comma-separated provider stream hostnames.
-- Redeploy after changing environment variables.
+- Deploy `server.py` to Render, Railway, or a VPS. This is required for the subscription database and HLS proxy.
+- `render.yaml` is included for Render. Add `TELEGRAM_BOT_TOKEN` and `ADMIN_API_TOKEN` as private environment variables.
+- Keep the `members.db` database on a persistent disk (the supplied Render blueprint uses `/var/data`).
+- Point the frontend API calls to the backend domain before production release.
 
-For high-traffic HLS proxying, host `server.py` on a persistent backend such as Render, Railway, or a VPS and keep Vercel for the frontend.
+## Monthly membership
+
+The backend validates Telegram Web App `initData` on every protected API call. A member is active only until their stored `expires_at` timestamp. After reviewing a manual payment, activate 30 days with the admin endpoint:
+
+```text
+POST /api/admin/members/activate
+Authorization: Bearer <ADMIN_API_TOKEN>
+Content-Type: application/json
+
+{"telegramUserId":"123456789","displayName":"User name","days":30}
+```
+
+Never expose `TELEGRAM_BOT_TOKEN` or `ADMIN_API_TOKEN` in HTML, GitHub, or a Telegram message.
