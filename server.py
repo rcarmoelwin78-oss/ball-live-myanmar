@@ -23,6 +23,7 @@ FIREBASE_URL = "https://bgm-live-db-default-rtdb.asia-southeast1.firebasedatabas
 MATCHES_FILE = Path(__file__).with_name("matches.json")
 PROVIDER_CONFIG_FILE = Path(__file__).with_name("provider_config.json")
 MEMBERS_DB = Path(os.getenv("MEMBERS_DB", Path(os.getenv("DATA_DIR", Path(__file__).parent)) / "members.db"))
+WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
 _provider_cache: list[dict] = []
 _provider_cache_at = 0.0
 USER_AGENT = (
@@ -44,6 +45,13 @@ def database():
             display_name TEXT NOT NULL DEFAULT '',
             expires_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
+        )
+    """)
+    connection.execute("""
+        CREATE TABLE IF NOT EXISTS payment_requests (
+            telegram_user_id TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL DEFAULT '',
+            received_at TEXT NOT NULL
         )
     """)
     return connection
@@ -98,6 +106,20 @@ def member_required():
     if member:
         return member
     return jsonify({"error": "Subscription expired or inactive"}), 403
+
+
+def admin_authorized():
+    token = os.getenv("ADMIN_API_TOKEN", "")
+    return bool(token) and hmac.compare_digest(request.headers.get("Authorization", ""), f"Bearer {token}")
+
+
+def telegram_api(method: str, payload: dict):
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if not token:
+        raise RuntimeError("Telegram bot is not configured")
+    response = requests.post(f"https://api.telegram.org/bot{token}/{method}", json=payload, timeout=15)
+    response.raise_for_status()
+    return response.json()
 
 
 def site_base(url: str) -> str:
@@ -319,7 +341,7 @@ def session():
 @app.post("/api/admin/members/activate")
 def activate_member():
     """Manual-payment admin action: activate a Telegram user for a number of days."""
-    if not os.getenv("ADMIN_API_TOKEN") or request.headers.get("Authorization") != f"Bearer {os.getenv('ADMIN_API_TOKEN')}":
+    if not admin_authorized():
         return jsonify({"error": "Unauthorized"}), 401
     body = request.get_json(silent=True) or {}
     user_id = str(body.get("telegramUserId", "")).strip()
@@ -343,6 +365,68 @@ def activate_member():
             (user_id, str(body.get("displayName", "")), expiry.isoformat(), now.isoformat()),
         )
     return jsonify({"telegramUserId": user_id, "expiresAt": expiry.isoformat()})
+
+
+@app.post("/api/admin/telegram/webhook")
+def configure_telegram_webhook():
+    """Point the bot at this service without exposing the BotFather token."""
+    if not admin_authorized():
+        return jsonify({"error": "Unauthorized"}), 401
+    secret = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+    if not secret:
+        return jsonify({"error": "Set TELEGRAM_WEBHOOK_SECRET in Render first"}), 422
+    try:
+        telegram_api("setWebhook", {
+            "url": request.url_root.rstrip("/") + "/api/telegram/webhook",
+            "secret_token": secret,
+            "allowed_updates": ["message"],
+        })
+    except (RuntimeError, requests.RequestException):
+        return jsonify({"error": "Could not connect the Telegram bot"}), 502
+    return jsonify({"ok": True})
+
+
+@app.get("/api/admin/payment-requests")
+def payment_requests():
+    """List users who have messaged the bot for simple manual activation."""
+    if not admin_authorized():
+        return jsonify({"error": "Unauthorized"}), 401
+    with database() as connection:
+        rows = connection.execute(
+            "SELECT telegram_user_id, display_name, received_at FROM payment_requests ORDER BY received_at DESC LIMIT 100"
+        ).fetchall()
+    return jsonify([dict(row) for row in rows])
+
+
+@app.post("/api/telegram/webhook")
+def telegram_webhook():
+    """Reply to /start or /id with the sender's ID for manual activation."""
+    secret = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+    if not secret or not hmac.compare_digest(request.headers.get("X-Telegram-Bot-Api-Secret-Token", ""), secret):
+        return jsonify({"error": "Unauthorized"}), 401
+    update = request.get_json(silent=True) or {}
+    message = update.get("message") or {}
+    sender = message.get("from") or {}
+    chat = message.get("chat") or {}
+    text = (message.get("text") or "").strip().lower()
+    if sender.get("id") and chat.get("id"):
+        name = " ".join(part for part in [sender.get("first_name", ""), sender.get("last_name", "")] if part).strip()
+        with database() as connection:
+            connection.execute(
+                "INSERT INTO payment_requests (telegram_user_id, display_name, received_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(telegram_user_id) DO UPDATE SET display_name=excluded.display_name, received_at=excluded.received_at",
+                (str(sender["id"]), name, datetime.now(UTC).isoformat()),
+            )
+    if sender.get("id") and chat.get("id") and text in {"/start", "/id", "id"}:
+        telegram_api("sendMessage", {
+            "chat_id": chat["id"],
+            "text": (
+                "Welcome to Ball Live Myanmar!\n\n"
+                "ငွေလွှဲပြီး screenshot ကို ဒီ bot ထဲပို့ပေးပါ။ "
+                "Admin က အတည်ပြုပြီးနောက် access ဖွင့်ပေးပါမည်။"
+            ),
+        })
+    return jsonify({"ok": True})
 
 
 @app.get("/api/matches")
