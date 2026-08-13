@@ -428,7 +428,7 @@ def telegram_webhook():
     update = request.get_json(silent=True) or {}
     callback = update.get("callback_query") or {}
     message = update.get("message") or callback.get("message") or {}
-    sender = message.get("from") or callback.get("from") or {}
+    sender = callback.get("from") or message.get("from") or {}
     chat = message.get("chat") or {}
     text = (message.get("text") or "").strip().lower()
     if sender.get("id") and chat.get("id"):
