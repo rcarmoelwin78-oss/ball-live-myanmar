@@ -9,7 +9,9 @@ const encoder = new TextEncoder();
 const jsonHeaders = { "content-type": "application/json; charset=utf-8", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type, x-telegram-init-data" };
 
 function json(data: unknown, status = 200) { return new Response(JSON.stringify(data), { status, headers: jsonHeaders }); }
-function text(body: string, status = 200) { return new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8" } }); }
+function text(body: string, status = 200) {
+  return new Response(new Blob([body], { type: "text/html; charset=utf-8" }), { status });
+}
 function base(req: Request) { const url = new URL(req.url); return `${url.origin}/functions/v1/ball-live`; }
 function secret(name: string) { return Deno.env.get(name)?.trim() || ""; }
 function authorizedAdmin(req: Request) { const value = secret("ADMIN_API_TOKEN"); return Boolean(value) && req.headers.get("authorization") === `Bearer ${value}`; }
@@ -73,7 +75,10 @@ const adminPage = `${style}<main class="app"><div class="brand">BALL LIVE MYANMA
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: jsonHeaders });
-  const url = new URL(req.url); const prefix = "/functions/v1/ball-live"; const path = url.pathname.startsWith(prefix) ? url.pathname.slice(prefix.length) || "/" : "/";
+  const url = new URL(req.url);
+  // Edge Runtime removes /functions/v1 on some requests but preserves it on
+  // others. Strip everything through the function name in both cases.
+  const path = url.searchParams.get("path") || url.pathname.replace(/^.*\/ball-live/, "") || "/";
   if (path === "/telegram" && req.method === "POST") return botWebhook(req);
   if (path === "/") return text(indexPage);
   if (path === "/watch") return text(watchPage);

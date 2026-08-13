@@ -45,16 +45,13 @@
         list.appendChild(button);
       });
     }
-    function apiFetch(url, options) {
-      options = options || {};
-      options.headers = Object.assign({}, options.headers || {}, {
-        'X-Telegram-Init-Data': tg ? tg.initData : ''
-      });
-      return fetch(url, options);
+    var apiUrl = 'https://raoxttvjybufllnddupi.supabase.co/functions/v1/ball-api';
+    function apiFetch(action) {
+      return fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': tg ? tg.initData : '' }, body: JSON.stringify({ action: action }) });
     }
     async function load() {
       count.textContent = 'Loading...';
-      try { var response = await apiFetch('/api/matches'); if (!response.ok) { var error = await response.json(); throw new Error(error.error || 'Could not load matches'); } draw(await response.json()); }
+      try { var response = await apiFetch('matches'); if (!response.ok) { var error = await response.json(); throw new Error(error.error || 'Could not load matches'); } draw(await response.json()); }
       catch (error) {
         count.textContent = 'Locked';
         list.innerHTML = '<div class="empty"><b>Subscription လိုအပ်ပါသည်</b>' + error.message + '</div>';
