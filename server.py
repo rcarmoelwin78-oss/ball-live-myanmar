@@ -54,6 +54,16 @@ def database():
             received_at TEXT NOT NULL
         )
     """)
+    connection.execute("""
+        CREATE TABLE IF NOT EXISTS customer_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_user_id TEXT NOT NULL,
+            message_type TEXT NOT NULL,
+            body TEXT NOT NULL DEFAULT '',
+            file_id TEXT NOT NULL DEFAULT '',
+            received_at TEXT NOT NULL
+        )
+    """)
     return connection
 
 
@@ -413,10 +423,39 @@ def payment_requests():
     if not admin_authorized():
         return jsonify({"error": "Unauthorized"}), 401
     with database() as connection:
-        rows = connection.execute(
-            "SELECT telegram_user_id, display_name, received_at FROM payment_requests ORDER BY received_at DESC LIMIT 100"
-        ).fetchall()
+        rows = connection.execute("""
+            SELECT p.telegram_user_id, p.display_name, p.received_at,
+                   m.message_type, m.body AS latest_message, m.file_id
+            FROM payment_requests p
+            LEFT JOIN customer_messages m ON m.id = (
+                SELECT id FROM customer_messages
+                WHERE telegram_user_id = p.telegram_user_id
+                ORDER BY id DESC LIMIT 1
+            )
+            ORDER BY p.received_at DESC LIMIT 100
+        """).fetchall()
     return jsonify([dict(row) for row in rows])
+
+
+@app.get("/api/admin/payment-requests/<telegram_user_id>/photo")
+def payment_photo(telegram_user_id: str):
+    """Return a Telegram-uploaded payment image to the authenticated admin only."""
+    if not admin_authorized():
+        return jsonify({"error": "Unauthorized"}), 401
+    file_id = request.args.get("fileId", "").strip()
+    if not file_id:
+        return jsonify({"error": "Screenshot not found"}), 404
+    try:
+        metadata = telegram_api("getFile", {"file_id": file_id})
+        file_path = metadata.get("result", {}).get("file_path", "")
+        token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        if not file_path or not token:
+            raise RuntimeError("Screenshot unavailable")
+        image = requests.get(f"https://api.telegram.org/file/bot{token}/{file_path}", timeout=20)
+        image.raise_for_status()
+        return Response(image.content, content_type=image.headers.get("Content-Type", "image/jpeg"))
+    except (requests.RequestException, RuntimeError):
+        return jsonify({"error": "Could not load screenshot"}), 502
 
 
 @app.post("/api/telegram/webhook")
@@ -439,6 +478,20 @@ def telegram_webhook():
                 "ON CONFLICT(telegram_user_id) DO UPDATE SET display_name=excluded.display_name, received_at=excluded.received_at",
                 (str(sender["id"]), name, datetime.now(UTC).isoformat()),
             )
+            if message.get("photo"):
+                file_id = message["photo"][-1].get("file_id", "")
+                message_type, body = "photo", message.get("caption", "")
+            elif message.get("document"):
+                file_id = message["document"].get("file_id", "")
+                message_type, body = "document", message.get("caption", "")
+            else:
+                file_id = ""
+                message_type, body = "text", message.get("text", "")
+            if not callback and (body or file_id):
+                connection.execute(
+                    "INSERT INTO customer_messages (telegram_user_id, message_type, body, file_id, received_at) VALUES (?, ?, ?, ?, ?)",
+                    (str(sender["id"]), message_type, body, file_id, datetime.now(UTC).isoformat()),
+                )
     if not sender.get("id") or not chat.get("id"):
         return jsonify({"ok": True})
 
