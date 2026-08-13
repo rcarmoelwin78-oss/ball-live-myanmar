@@ -475,6 +475,18 @@ def telegram_webhook():
             "text": "⚽ Ball General Live Myanmar မှ ကြိုဆိုပါတယ်။\n\nလိုချင်တာကို အောက်ကခလုတ်တစ်ခုနှိပ်ပါ။",
             "reply_markup": {"inline_keyboard": keyboard},
         })
+    elif message.get("photo") or message.get("document"):
+        telegram_api("sendMessage", {
+            "chat_id": chat["id"],
+            "text": "✅ Payment screenshot ကိုလက်ခံပြီးပါပြီ။ Admin စစ်ဆေးအတည်ပြုပြီးလျှင် 🔴 Watch Live ခလုတ်ကို ဒီ bot မှာပြန်ပို့ပေးပါမယ်။",
+            "reply_markup": {"inline_keyboard": keyboard},
+        })
+    elif text:
+        telegram_api("sendMessage", {
+            "chat_id": chat["id"],
+            "text": "Live Pass ဝယ်လိုပါက 🔴 Live ဝယ်မည် ကိုနှိပ်ပါ။ ကြည့်လိုပါက 📺 Live ကြည့်မည် ကိုနှိပ်ပါ။",
+            "reply_markup": {"inline_keyboard": keyboard},
+        })
     return jsonify({"ok": True})
 
 
