@@ -52,3 +52,5 @@ Never expose `TELEGRAM_BOT_TOKEN` or `ADMIN_API_TOKEN` in HTML, GitHub, or a Tel
 
 Open `/admin` on the backend domain to use the manual member activation dashboard.
 Set `TELEGRAM_WEBHOOK_SECRET` to another generated secret, then use **Connect Telegram bot** once in the admin dashboard. Any user who sends a payment screenshot or message to the bot is automatically listed in **Load payment users**; select their row and activate their membership.
+
+Set `WEB_APP_URL` to the public Web App URL. After activation, the bot automatically sends that user a **Watch Live** Web App button.

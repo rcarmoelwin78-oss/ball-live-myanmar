@@ -364,7 +364,28 @@ def activate_member():
             "ON CONFLICT(telegram_user_id) DO UPDATE SET display_name=excluded.display_name, expires_at=excluded.expires_at, updated_at=excluded.updated_at",
             (user_id, str(body.get("displayName", "")), expiry.isoformat(), now.isoformat()),
         )
-    return jsonify({"telegramUserId": user_id, "expiresAt": expiry.isoformat()})
+    web_app_url = os.getenv("WEB_APP_URL", "").strip()
+    delivery = "activated"
+    if web_app_url:
+        try:
+            telegram_api("sendMessage", {
+                "chat_id": user_id,
+                "text": (
+                    "✅ Live Pass ကိုဖွင့်ပေးပြီးပါပြီ!\n\n"
+                    f"သက်တမ်းကုန်ချိန်: {expiry.astimezone().strftime('%Y-%m-%d %H:%M')}\n\n"
+                    "အောက်က 🔴 Watch Live ကိုနှိပ်ပြီး ပွဲတွေကြည့်နိုင်ပါပြီ။"
+                ),
+                "reply_markup": {
+                    "inline_keyboard": [[{
+                        "text": "🔴 Watch Live",
+                        "web_app": {"url": web_app_url},
+                    }]],
+                },
+            })
+            delivery = "watch link sent"
+        except (RuntimeError, requests.RequestException):
+            delivery = "activated, but watch link could not be sent"
+    return jsonify({"telegramUserId": user_id, "expiresAt": expiry.isoformat(), "delivery": delivery})
 
 
 @app.post("/api/admin/telegram/webhook")
@@ -421,9 +442,10 @@ def telegram_webhook():
         telegram_api("sendMessage", {
             "chat_id": chat["id"],
             "text": (
-                "Welcome to Ball Live Myanmar!\n\n"
-                "ငွေလွှဲပြီး screenshot ကို ဒီ bot ထဲပို့ပေးပါ။ "
-                "Admin က အတည်ပြုပြီးနောက် access ဖွင့်ပေးပါမည်။"
+                "⚽ Ball Live Myanmar မှ ကြိုဆိုပါသည်။\n\n"
+                "📦 Monthly Live Pass — 5,000 Ks / 30 days\n\n"
+                "KPay သို့ ငွေလွှဲပြီး payment screenshot ကို ဒီ bot ထဲပို့ပေးပါ။ "
+                "Admin က အတည်ပြုပြီးနောက် 🔴 Watch Live button ကို ပြန်ပို့ပေးပါမည်။"
             ),
         })
     return jsonify({"ok": True})
