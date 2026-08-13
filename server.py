@@ -70,7 +70,15 @@ def verify_telegram_user():
 
 def current_member():
     """Return active Telegram member. Localhost is allowed for UI development."""
-    if request.remote_addr in {"127.0.0.1", "::1"}:
+    # Only permit unauthenticated access when explicitly enabled for a local
+    # developer machine. Render/Vercel may use 127.0.0.1 internally, so the
+    # host check is required in addition to the remote address.
+    local_hosts = {"127.0.0.1:8080", "localhost:8080", "[::1]:8080"}
+    if (
+        os.getenv("ALLOW_LOCAL_DEMO") == "true"
+        and request.remote_addr in {"127.0.0.1", "::1"}
+        and request.host in local_hosts
+    ):
         return {"id": "local-demo", "first_name": "Local Demo"}
     user = verify_telegram_user()
     if not user:
